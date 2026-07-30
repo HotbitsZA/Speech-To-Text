@@ -54,7 +54,7 @@ brew install cmake pkg-config rtaudio whisper-cpp
 Download a Whisper GGML model before running the example. The current demo expects:
 
 ```text
-/Users/phelelanicwele/models/ggml-base.en.bin
+~/models/ggml-base.en.bin
 ```
 
 Create the folder and download the base English model:
