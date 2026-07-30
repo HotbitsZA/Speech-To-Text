@@ -1,0 +1,42 @@
+# CMake build output
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+CTestTestfile.cmake
+
+# Compiled artifacts
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.bin
+WhisperSTTWorkerV2
+example_stt
+example_stt.bin
+
+# Runtime and diagnostic output
+*.log
+*.tmp
+*.wav
+*.pcm
+*.raw
+
+# Local model files are large and should be downloaded separately.
+models/
+*.gguf
+ggml-*.bin
+
+# macOS/editor noise
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
