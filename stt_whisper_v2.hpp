@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cBaseWorker_V2.h"
+#include <chrono>
 #include <string>
 #include <vector>
 #include <memory>
@@ -16,7 +17,10 @@ class RtAudio;
 class SpeechToText : public cBaseWorker_V2
 {
 public:
-    using TranscriptionCallback = std::function<void(const std::string &text)>;
+    // `capturedAt` is the moment the learner's phrase began (not when transcription
+    // completed), so callers can tell whether the audio overlapped the teacher's own
+    // playback even though whisper finishes asynchronously.
+    using TranscriptionCallback = std::function<void(const std::string &text, std::chrono::steady_clock::time_point capturedAt)>;
 
     SpeechToText(const std::string &model_path, TranscriptionCallback callback = nullptr);
     ~SpeechToText() noexcept override;
@@ -51,9 +55,15 @@ private:
     size_t m_silenceTimeoutSamples = 0;     // Number of native samples representing a punctuation pause
     size_t m_consecutiveSilenceSamples = 0; // Running silence frame counter
     bool m_isSpeaking = false;              // Tracking variable for current phrasing phase
+    std::chrono::steady_clock::time_point m_phraseCaptureStart{}; // Wall-clock onset of the current phrase
 
     // Deep Asynchronous Execution Pipelines
-    std::queue<std::vector<float>> m_taskQueue;
+    struct st_CapturedPhrase
+    {
+        std::vector<float> samples;
+        std::chrono::steady_clock::time_point capturedAt{};
+    };
+    std::queue<st_CapturedPhrase> m_taskQueue;
     std::mutex m_queueMutex;
     std::condition_variable m_queueCV;
 

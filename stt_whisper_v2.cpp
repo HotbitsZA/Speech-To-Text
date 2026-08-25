@@ -105,7 +105,12 @@ void SpeechToText::process_incoming_samples(const int16_t *samples, unsigned int
 
         if (m_pImpl->calibrationSamplesAccumulated >= m_pImpl->targetCalibrationSamples)
         {
-            float averageAmbientNoise = static_cast<float>((m_pImpl->calibrationEnergySum / m_pImpl->calibrationSamplesAccumulated) / frames);
+            // calibrationEnergySum is the sum of |x|/32768 across every captured sample,
+            // so dividing by the total sample count yields the true per-sample average.
+            // (The previous code divided by the block frame count a second time, reporting
+            // an ambient floor ~512x lower than reality and silently pinning the threshold
+            // to its 0.003 clamp.)
+            float averageAmbientNoise = static_cast<float>(m_pImpl->calibrationEnergySum / m_pImpl->calibrationSamplesAccumulated);
 
             // Set VAD threshold dynamically to 2.5x the ambient background noise floor
             m_vadThreshold = std::max(0.003f, averageAmbientNoise * 2.5f);
@@ -125,6 +130,7 @@ void SpeechToText::process_incoming_samples(const int16_t *samples, unsigned int
         if (!m_isSpeaking)
         {
             m_isSpeaking = true;
+            m_phraseCaptureStart = std::chrono::steady_clock::now();
             // Prepend our saved pre-roll audio history so the start of the first word isn't cut off
             audio_buffer.insert(audio_buffer.end(), m_pImpl->prerollBuffer.begin(), m_pImpl->prerollBuffer.end());
             m_pImpl->prerollBuffer.clear();
@@ -204,7 +210,7 @@ void SpeechToText::slice_and_queue_active_phrase()
 
     {
         std::lock_guard<std::mutex> lock(m_queueMutex);
-        m_taskQueue.push(std::move(pcmf32_whisper));
+        m_taskQueue.push({std::move(pcmf32_whisper), m_phraseCaptureStart});
     }
     m_queueCV.notify_one();
 }
@@ -261,7 +267,7 @@ void SpeechToText::run()
 {
     while (continueRunning())
     {
-        std::vector<float> chunkToProcess;
+        st_CapturedPhrase phraseToProcess;
 
         {
             std::unique_lock<std::mutex> lock(m_queueMutex);
@@ -273,12 +279,12 @@ void SpeechToText::run()
 
             if (!m_taskQueue.empty())
             {
-                chunkToProcess = std::move(m_taskQueue.front());
+                phraseToProcess = std::move(m_taskQueue.front());
                 m_taskQueue.pop();
             }
         }
 
-        if (!chunkToProcess.empty())
+        if (!phraseToProcess.samples.empty())
         {
             updateHeartbeat();
 
@@ -293,7 +299,7 @@ void SpeechToText::run()
             wparams.beam_search.beam_size = 5;
             wparams.entropy_thold = 2.4f;
 
-            if (whisper_full(ctx, wparams, chunkToProcess.data(), static_cast<int>(chunkToProcess.size())) != 0)
+            if (whisper_full(ctx, wparams, phraseToProcess.samples.data(), static_cast<int>(phraseToProcess.samples.size())) != 0)
                 continue;
 
             std::string text_output = "";
@@ -310,7 +316,7 @@ void SpeechToText::run()
             }
 
             if (currentCallback)
-                currentCallback(text_output);
+                currentCallback(text_output, phraseToProcess.capturedAt);
         }
     }
 }
