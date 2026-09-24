@@ -87,7 +87,7 @@ Targets:
 | Target | Description |
 | --- | --- |
 | `WhisperSTTWorkerV2` | Continuous VAD example (default, always built) |
-| `example_stt` | Legacy push-to-talk demo (`-DBUILD_LEGACY_V1=ON`) |
+| `example_stt` | Legacy push-to-talk demo (always built) |
 | `stt_tests` | Unit tests (resampler + VAD, no audio hardware needed) |
 
 The executable is created at `build/WhisperSTTWorkerV2`.

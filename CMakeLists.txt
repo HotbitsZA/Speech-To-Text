@@ -9,7 +9,6 @@ find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 
 # Build options
-option(BUILD_LEGACY_V1 "Build the legacy push-to-talk v1 example" OFF)
 option(BUILD_TESTING "Build the unit tests" ON)
 
 # ---------------------------------------------------------------------------
@@ -18,13 +17,29 @@ option(BUILD_TESTING "Build the unit tests" ON)
 # ---------------------------------------------------------------------------
 pkg_check_modules(RTAUDIO REQUIRED IMPORTED_TARGET rtaudio)
 
+# Whisper — pkg-config may reference a stale/moved Homebrew Cellar path
+# (the formula upgrades the keg but the .pc prefix can point at the wrong one),
+# so validate the include dir and fall back to find_library + brew.
 pkg_check_modules(WHISPER QUIET IMPORTED_TARGET whisper)
-if(NOT WHISPER_FOUND)
+if(WHISPER_FOUND AND EXISTS "${WHISPER_INCLUDE_DIRS}/whisper.h")
+  set(WHISPER_LIB "")
+else()
+  set(WHISPER_FOUND OFF)
   find_library(WHISPER_LIB NAMES whisper HINTS /opt/homebrew/lib /usr/local/lib)
+  if(NOT WHISPER_LIB)
+    execute_process(COMMAND brew --prefix whisper-cpp
+                    OUTPUT_VARIABLE WHISPER_KEG OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_QUIET)
+    find_library(WHISPER_LIB NAMES whisper HINTS ${WHISPER_KEG}/lib)
+  endif()
 endif()
 
+# GGML — same robustness as whisper.
 pkg_check_modules(GGML QUIET IMPORTED_TARGET ggml)
-if(NOT GGML_FOUND)
+if(GGML_FOUND AND EXISTS "${GGML_INCLUDE_DIRS}/ggml-backend.h")
+  set(GGML_LIB "")
+else()
+  set(GGML_FOUND OFF)
   find_library(GGML_LIB NAMES ggml ggml-base HINTS /opt/homebrew/lib /usr/local/lib)
   if(NOT GGML_LIB)
     # Last-resort: resolve the active Homebrew install instead of pinning a version
@@ -94,16 +109,14 @@ add_executable(WhisperSTTWorkerV2
 target_link_libraries(WhisperSTTWorkerV2 PRIVATE stt_core)
 
 # ---------------------------------------------------------------------------
-# Optional legacy push-to-talk app
+# Legacy push-to-talk app (v1)
 # ---------------------------------------------------------------------------
-if(BUILD_LEGACY_V1)
-  add_executable(example_stt
-      example_stt.cpp
-      stt_whisper.cpp
-  )
-  target_link_libraries(example_stt PRIVATE stt_core)
-  set_target_properties(example_stt PROPERTIES OUTPUT_NAME "example_stt.bin")
-endif()
+add_executable(example_stt
+    example_stt.cpp
+    stt_whisper.cpp
+)
+target_link_libraries(example_stt PRIVATE stt_core)
+set_target_properties(example_stt PROPERTIES OUTPUT_NAME "example_stt.bin")
 
 # ---------------------------------------------------------------------------
 # Unit tests (pure logic: resampler + VAD, no audio hardware needed)
